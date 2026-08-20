@@ -1,0 +1,3 @@
+# Ignore local configuration files containing keys
+Secrets.plist
+*.xcconfig

@@ -54,30 +54,30 @@ class NetworkManager: ObservableObject {
     @Published var errorMessage: String?
     
     private let apiKey = Secrets.apiKey
-
+    
     func signIn(email: String, password: String) async {
         guard let url = URL(string: "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=\(apiKey)") else {
             DispatchQueue.main.async { self.errorMessage = "Invalid URL" }
             return
         }
-
+        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
+        
         let body = AuthRequestBody(email: email, password: password)
-
+        
         do {
             request.httpBody = try JSONEncoder().encode(body)
             let (data, response) = try await URLSession.shared.data(for: request)
-
+            
             guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
                 DispatchQueue.main.async { self.errorMessage = "Authentication failed. Check credentials/API key." }
                 return
             }
-
+            
             let authResult = try JSONDecoder().decode(AuthResponse.self, from: data)
-
+            
             DispatchQueue.main.async {
                 self.token = authResult.idToken
                 self.localId = authResult.localId
@@ -144,35 +144,86 @@ class NetworkManager: ObservableObject {
         throw StorageError.parseFailed
     }
     
+    
+    /// Lists all file paths uploaded under a specific directory (e.g., "users/{userId}")
+    func listUserFiles(localId: String, idToken: String) async throws -> [String] {
+        let prefix = "users/\(localId)/"
+        guard let encodedPrefix = prefix.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            throw StorageError.invalidPath
+        }
+        
+        let urlString = "https://firebasestorage.googleapis.com/v0/b/\(Secrets.storageBucket)/o?prefix=\(encodedPrefix)"
+        guard let url = URL(string: urlString) else { throw StorageError.invalidURL }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw StorageError.invalidResponse
+        }
+        
+        if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let items = json["items"] as? [[String: Any]] {
+            return items.compactMap { $0["name"] as? String }
+        }
+        
+        return []
+    }
+    
+    /// Downloads image binary data directly from a Firebase Storage path
+    func downloadImage(path: String, idToken: String) async throws -> UIImage {
+        guard let browserEncodedPath = path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)?
+            .replacingOccurrences(of: "/", with: "%2F") else {
+            throw StorageError.invalidPath
+        }
+        
+        let urlString = "https://firebasestorage.googleapis.com/v0/b/\(Secrets.storageBucket)/o/\(browserEncodedPath)?alt=media"
+        guard let url = URL(string: urlString) else { throw StorageError.invalidURL }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode),
+              let downloadedImage = UIImage(data: data) else {
+            throw StorageError.invalidResponse
+        }
+        
+        return downloadedImage
+    }
+    
     /// Authenticates anonymously with Firebase REST API to retrieve an ID Token
-//    func signInAnonymously() async throws -> (idToken: String, localId: String) {
-//        let urlString = "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=\(Secrets.apiKey)"
-//        guard let url = URL(string: urlString) else {
-//            throw StorageError.invalidURL
-//        }
-//        
-//        var request = URLRequest(url: url)
-//        request.httpMethod = "POST"
-//        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-//        
-//        let body: [String: Any] = ["returnSecureToken": true]
-//        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-//        
-//        let (data, response) = try await URLSession.shared.data(for: request)
-//        
-//        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-//            let serverError = String(data: data, encoding: .utf8) ?? "Authentication failed"
-//            throw NSError(domain: "FirebaseAuth", code: -1, userInfo: [NSLocalizedDescriptionKey: serverError])
-//        }
-//        
-//        if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-//           let idToken = json["idToken"] as? String,
-//           let localId = json["localId"] as? String {
-//            return (idToken: idToken, localId: localId)
-//        }
-//        
-//        throw StorageError.parseFailed
-//    }
+    //    func signInAnonymously() async throws -> (idToken: String, localId: String) {
+    //        let urlString = "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=\(Secrets.apiKey)"
+    //        guard let url = URL(string: urlString) else {
+    //            throw StorageError.invalidURL
+    //        }
+    //
+    //        var request = URLRequest(url: url)
+    //        request.httpMethod = "POST"
+    //        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    //
+    //        let body: [String: Any] = ["returnSecureToken": true]
+    //        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    //
+    //        let (data, response) = try await URLSession.shared.data(for: request)
+    //
+    //        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+    //            let serverError = String(data: data, encoding: .utf8) ?? "Authentication failed"
+    //            throw NSError(domain: "FirebaseAuth", code: -1, userInfo: [NSLocalizedDescriptionKey: serverError])
+    //        }
+    //
+    //        if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+    //           let idToken = json["idToken"] as? String,
+    //           let localId = json["localId"] as? String {
+    //            return (idToken: idToken, localId: localId)
+    //        }
+    //
+    //        throw StorageError.parseFailed
+    //    }
 }
 
 

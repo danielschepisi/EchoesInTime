@@ -1,3 +1,6 @@
 # Ignore local configuration files containing keys
 Secrets.plist
 *.xcconfig
+*.xcuserstate
+xcuserdata/
+NOTES.md

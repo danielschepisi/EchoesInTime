@@ -16,4 +16,13 @@ enum Secrets {
         }
         return key
     }
+    
+    static var storageBucket: String {
+            guard let filePath = Bundle.main.path(forResource: "Secrets", ofType: "plist"),
+                  let dict = NSDictionary(contentsOfFile: filePath),
+                  let value = dict["STORAGE_BUCKET"] as? String else {
+                fatalError("STORAGE_BUCKET not found in Secrets.plist")
+            }
+            return value
+        }
 }

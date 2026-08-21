@@ -11,7 +11,7 @@ import SwiftUI
 struct EchoesInTimeApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            LoginView()
         }
     }
 }

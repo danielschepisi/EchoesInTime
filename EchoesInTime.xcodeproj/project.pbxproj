@@ -10,9 +10,22 @@
 		7FD40BB830374D9100424347 /* EchoesInTime.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EchoesInTime.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7F7A1EA33037955E00CA5164 /* Exceptions for "EchoesInTime" folder in "EchoesInTime" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				NOTES.md,
+			);
+			target = 7FD40BB730374D9100424347 /* EchoesInTime */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7FD40BBA30374D9100424347 /* EchoesInTime */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7F7A1EA33037955E00CA5164 /* Exceptions for "EchoesInTime" folder in "EchoesInTime" target */,
+			);
 			path = EchoesInTime;
 			sourceTree = "<group>";
 		};

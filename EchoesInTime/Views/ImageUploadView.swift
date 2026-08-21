@@ -8,6 +8,21 @@
 import SwiftUI
 import PhotosUI
 
+import SwiftUI
+import PhotosUI
+
+// Data structure to link downloaded image to its Cloud Storage path
+struct CloudPhoto: Identifiable {
+    let id = UUID()
+    let path: String
+    let image: UIImage
+    
+    // Checks if the file belongs to the current user
+    func isOwnedBy(userId: String) -> Bool {
+        return path.hasPrefix("users/\(userId)/")
+    }
+}
+
 struct ImageUploadView: View {
     let token: String
     let localId: String
@@ -15,13 +30,12 @@ struct ImageUploadView: View {
     @State private var selectedItem: PhotosPickerItem?
     @State private var selectedImage: UIImage?
     
-    // Downloaded Images State
-    @State private var downloadedImages: [UIImage] = []
+    // Updated state to track CloudPhoto objects (Image + Path)
+    @State private var downloadedPhotos: [CloudPhoto] = []
     @State private var isDownloading = false
     
     @State private var statusMessage = "Select or download photos."
     @State private var isUploading = false
-    @State private var uploadedImageURL: String?
     
     var body: some View {
         ScrollView {
@@ -91,19 +105,34 @@ struct ImageUploadView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
                 
-                // DOWNLOADED GALLERY GRID
-                if !downloadedImages.isEmpty {
+                // DOWNLOADED GALLERY GRID WITH DELETE UI
+                if !downloadedPhotos.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Cloud Gallery (\(downloadedImages.count))")
+                        Text("Cloud Gallery (\(downloadedPhotos.count))")
                             .font(.headline)
                         
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 12) {
-                            ForEach(0..<downloadedImages.count, id: \.self) { index in
-                                Image(uiImage: downloadedImages[index])
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 100, height: 100)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 110))], spacing: 16) {
+                            ForEach(downloadedPhotos) { photo in
+                                ZStack(alignment: .topTrailing) {
+                                    Image(uiImage: photo.image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 110, height: 110)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    
+                                    // Delete Button (Only visible if the photo belongs to current user)
+                                    if photo.isOwnedBy(userId: localId) {
+                                        Button {
+                                            deletePhoto(photo)
+                                        } label: {
+                                            Image(systemName: "trash.circle.fill")
+                                                .font(.title2)
+                                                .symbolRenderingMode(.multicolor)
+                                                .background(Circle().fill(Color.white))
+                                        }
+                                        .padding(4)
+                                    }
+                                }
                             }
                         }
                     }
@@ -112,8 +141,8 @@ struct ImageUploadView: View {
             }
             .padding(.vertical)
         }
-        .onChange(of: selectedItem) { newItem in
-            loadSelectedPhoto(from: newItem)
+        .onChange(of: selectedItem) { oldValue, newValue in
+            loadSelectedPhoto(from: newValue)
         }
     }
     
@@ -122,35 +151,34 @@ struct ImageUploadView: View {
         Task {
             await MainActor.run {
                 isDownloading = true
-                statusMessage = "Finding uploaded files..."
-                downloadedImages.removeAll()
+                statusMessage = "Finding all uploaded files..."
+                downloadedPhotos.removeAll()
             }
             
             do {
-                // 1. Get list of file paths under users/{localId}/
-                let paths = try await NetworkManager.shared.listUserFiles(localId: localId, idToken: token)
+                let paths = try await NetworkManager.shared.listFiles(prefix: "users/", idToken: token)
+                let imagePaths = paths.filter { !$0.hasSuffix("/") }
                 
-                if paths.isEmpty {
+                if imagePaths.isEmpty {
                     await MainActor.run {
-                        statusMessage = "No images found in your cloud storage."
+                        statusMessage = "No images found in cloud storage."
                         isDownloading = false
                     }
                     return
                 }
                 
-                // 2. Fetch binary data for each image
-                var fetchedImages: [UIImage] = []
-                for (index, path) in paths.enumerated() {
+                var fetchedPhotos: [CloudPhoto] = []
+                for (index, path) in imagePaths.enumerated() {
                     await MainActor.run {
-                        statusMessage = "Downloading image \(index + 1) of \(paths.count)..."
+                        statusMessage = "Downloading image \(index + 1) of \(imagePaths.count)..."
                     }
                     let img = try await NetworkManager.shared.downloadImage(path: path, idToken: token)
-                    fetchedImages.append(img)
+                    fetchedPhotos.append(CloudPhoto(path: path, image: img))
                 }
                 
                 await MainActor.run {
-                    self.downloadedImages = fetchedImages
-                    self.statusMessage = "Successfully downloaded \(fetchedImages.count) image(s)!"
+                    self.downloadedPhotos = fetchedPhotos
+                    self.statusMessage = "Successfully loaded \(fetchedPhotos.count) photo(s)!"
                     self.isDownloading = false
                 }
                 
@@ -158,6 +186,29 @@ struct ImageUploadView: View {
                 await MainActor.run {
                     statusMessage = "Download error: \(error.localizedDescription)"
                     isDownloading = false
+                }
+            }
+        }
+    }
+    
+    // DELETE FLOW
+    private func deletePhoto(_ photo: CloudPhoto) {
+        Task {
+            await MainActor.run {
+                statusMessage = "Deleting image..."
+            }
+            
+            do {
+                try await NetworkManager.shared.deleteImage(path: photo.path, idToken: token)
+                
+                await MainActor.run {
+                    // Remove photo locally from UI array upon successful deletion
+                    self.downloadedPhotos.removeAll { $0.id == photo.id }
+                    self.statusMessage = "Image deleted successfully."
+                }
+            } catch {
+                await MainActor.run {
+                    self.statusMessage = "Deletion error: \(error.localizedDescription)"
                 }
             }
         }
@@ -195,8 +246,9 @@ struct ImageUploadView: View {
                 )
                 
                 await MainActor.run {
-                    statusMessage = "Upload Complete! You can now test downloading."
+                    statusMessage = "Upload Complete! Click Download to refresh gallery."
                     isUploading = false
+                    selectedImage = nil
                 }
             } catch {
                 await MainActor.run {
@@ -207,6 +259,9 @@ struct ImageUploadView: View {
         }
     }
 }
+
+
+
 //#Preview("Image Upload Playground") {
 //    NavigationStack {
 //        ImageUploadView(

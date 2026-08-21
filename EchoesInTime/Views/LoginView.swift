@@ -14,6 +14,9 @@ struct LoginView: View {
     @State private var passwordInput = "youcandoit"
     @State private var isLoading = false
     
+    // 1. Add state to toggle between Sign In and Sign Up modes
+    @State private var isSignUpMode = false
+    
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
@@ -21,7 +24,8 @@ struct LoginView: View {
                     .font(.largeTitle)
                     .bold()
                 
-                Text("Admin & Developer Sign In")
+                // 2. Dynamic header text
+                Text(isSignUpMode ? "Create a New Account" : "Admin & Developer Sign In")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
@@ -37,12 +41,21 @@ struct LoginView: View {
                 .padding(.horizontal)
                 
                 if isLoading {
-                    ProgressView("Signing in...")
+                    ProgressView(isSignUpMode ? "Creating account..." : "Signing in...")
                 } else {
-                    Button("Sign In") {
-                        handleLogin()
+                    // 3. Primary action button switches function based on mode
+                    Button(isSignUpMode ? "Create Account" : "Sign In") {
+                        handleAuthAction()
                     }
                     .buttonStyle(.borderedProminent)
+                    
+                    // 4. Toggle button to switch between Sign In and Sign Up
+                    Button(isSignUpMode ? "Already have an account? Sign In" : "Need an account? Sign Up") {
+                        isSignUpMode.toggle()
+                        networkManager.errorMessage = nil // Clear previous errors on toggle
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.accentColor)
                 }
                 
                 if let errorMessage = networkManager.errorMessage {
@@ -54,7 +67,7 @@ struct LoginView: View {
                 }
             }
             .padding()
-            // Automatically navigates when token and localId become non-nil
+            // Automatically navigates when token and localId become non-nil (works for both Sign In and Sign Up!)
             .navigationDestination(isPresented: Binding(
                 get: { networkManager.token != nil && networkManager.localId != nil },
                 set: { _ in }
@@ -66,10 +79,17 @@ struct LoginView: View {
         }
     }
     
-    private func handleLogin() {
+    // 5. Calls signUp or signIn depending on the current mode
+    private func handleAuthAction() {
         Task {
             await MainActor.run { isLoading = true }
-            await networkManager.signIn(email: emailInput, password: passwordInput)
+            
+            if isSignUpMode {
+                await networkManager.signUp(email: emailInput, password: passwordInput)
+            } else {
+                await networkManager.signIn(email: emailInput, password: passwordInput)
+            }
+            
             await MainActor.run { isLoading = false }
         }
     }

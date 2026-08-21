@@ -3,3 +3,4 @@ Secrets.plist
 *.xcconfig
 *.xcuserstate
 xcuserdata/
+NOTES.md

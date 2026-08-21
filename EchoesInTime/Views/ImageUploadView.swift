@@ -8,9 +8,6 @@
 import SwiftUI
 import PhotosUI
 
-import SwiftUI
-import PhotosUI
-
 // Data structure to link downloaded image to its Cloud Storage path
 struct CloudPhoto: Identifiable {
     let id = UUID()

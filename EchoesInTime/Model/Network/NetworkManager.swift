@@ -9,41 +9,6 @@ import Combine
 import Foundation
 import UIKit
 
-struct AuthRequestBody: Encodable {
-    let email: String
-    let password: String
-    let returnSecureToken: Bool = true
-}
-
-struct AuthResponse: Decodable {
-    let idToken: String
-    let localId: String
-    let email: String
-}
-
-enum StorageError: LocalizedError {
-    case imageConversionFailed
-    case invalidPath
-    case invalidURL
-    case invalidResponse
-    case parseFailed
-    
-    var errorDescription: String? {
-        switch self {
-        case .imageConversionFailed:
-            return "Failed to convert UIImage to JPEG binary data."
-        case .invalidPath:
-            return "Invalid storage upload path encoding."
-        case .invalidURL:
-            return "Failed to construct valid Firebase Storage URL."
-        case .invalidResponse:
-            return "Invalid or non-HTTP network response received."
-        case .parseFailed:
-            return "Upload succeeded, but failed to parse download URL token."
-        }
-    }
-}
-
 class NetworkManager: ObservableObject {
     
     static let shared = NetworkManager()
@@ -181,7 +146,7 @@ class NetworkManager: ObservableObject {
         throw StorageError.parseFailed
     }
     
-
+    
     /// Lists files in Firebase Storage matching a given prefix.
     func listFiles(prefix: String = "users/", idToken: String) async throws -> [String] {
         // 1. Build components to let URLComponents handle query encoding properly
@@ -217,13 +182,19 @@ class NetworkManager: ObservableObject {
         
         return []
     }
-
+    
     /// Downloads image binary data directly from a Firebase Storage path.
     func downloadImage(path: String, idToken: String) async throws -> UIImage {
-        // 1. Replace all forward slashes '/' with '%2F' for Firebase Storage REST API pathing
-        let escapedPath = path.replacingOccurrences(of: "/", with: "%2F")
+        // 1. Strip any leading slashes to prevent double-encoding (%2F) right after /o/
+        var cleanPath = path
+        if cleanPath.hasPrefix("/") {
+            cleanPath.removeFirst()
+        }
         
-        // 2. Build the exact media download URL
+        // 2. Replace forward slashes '/' with '%2F' for Firebase REST API pathing
+        let escapedPath = cleanPath.replacingOccurrences(of: "/", with: "%2F")
+        
+        // 3. Build the URL
         let urlString = "https://firebasestorage.googleapis.com/v0/b/\(Secrets.storageBucket)/o/\(escapedPath)?alt=media"
         
         guard let url = URL(string: urlString) else {
@@ -237,12 +208,13 @@ class NetworkManager: ObservableObject {
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
+            print("❌ Non-HTTP response returned for URL: \(urlString)")
             throw StorageError.invalidResponse
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
             let serverError = String(data: data, encoding: .utf8) ?? "Unknown error"
-            print("DownloadImage Failed (\(httpResponse.statusCode)): \(serverError)")
+            print("❌ DownloadImage Failed (\(httpResponse.statusCode)): \(serverError)")
             throw StorageError.invalidResponse
         }
         
@@ -258,8 +230,11 @@ class NetworkManager: ObservableObject {
     ///   - path: The full storage path (e.g., "users/USER_ID/photo.jpg")
     ///   - idToken: The active user's Firebase Auth ID token
     func deleteImage(path: String, idToken: String) async throws {
-        // Escapes slashes for Firebase REST endpoint (/ -> %2F)
-        let escapedPath = path.replacingOccurrences(of: "/", with: "%2F")
+        var cleanPath = path
+        if cleanPath.hasPrefix("/") {
+            cleanPath.removeFirst()
+        }
+        let escapedPath = cleanPath.replacingOccurrences(of: "/", with: "%2F")
         let urlString = "https://firebasestorage.googleapis.com/v0/b/\(Secrets.storageBucket)/o/\(escapedPath)"
         
         guard let url = URL(string: urlString) else {
@@ -286,7 +261,7 @@ class NetworkManager: ObservableObject {
             )
         }
     }
-
+    
 }
 
 

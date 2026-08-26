@@ -8,255 +8,177 @@
 import SwiftUI
 import PhotosUI
 
-// Data structure to link downloaded image to its Cloud Storage path
-struct CloudPhoto: Identifiable {
-    let id = UUID()
-    let path: String
-    let image: UIImage
-    
-    // Checks if the file belongs to the current user
-    func isOwnedBy(userId: String) -> Bool {
-        return path.hasPrefix("users/\(userId)/")
-    }
-}
-
 struct ImageUploadView: View {
     let token: String
     let localId: String
     
-    @State private var selectedItem: PhotosPickerItem?
-    @State private var selectedImage: UIImage?
-    
-    // Updated state to track CloudPhoto objects (Image + Path)
-    @State private var downloadedPhotos: [CloudPhoto] = []
-    @State private var isDownloading = false
-    
-    @State private var statusMessage = "Select or download photos."
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedPickerItems: [PhotosPickerItem] = []
+    @State private var pendingItems: [PendingUploadItem] = []
     @State private var isUploading = false
+    @State private var statusMessage = ""
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                Text("Upload & Download")
-                    .font(.title2)
-                    .bold()
-                
-                // Photo Picker & Preview Container
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(.systemGray6))
-                        .frame(height: 200)
+        VStack(spacing: 0) {
+            if pendingItems.isEmpty {
+                VStack(spacing: 16) {
+                    Spacer()
+                    Image(systemName: "photo.badge.plus")
+                        .font(.system(size: 52))
+                        .foregroundColor(.accentColor)
                     
-                    if let selectedImage {
-                        Image(uiImage: selectedImage)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxHeight: 180)
-                            .cornerRadius(12)
-                    } else {
-                        VStack(spacing: 8) {
-                            Image(systemName: "photo.badge.plus")
-                                .font(.largeTitle)
-                                .foregroundColor(.secondary)
-                            Text("No Photo Selected")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                    Text("Select photos to attach metadata and upload.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    
+                    PhotosPicker(
+                        selection: $selectedPickerItems,
+                        matching: .images,
+                        photoLibrary: .shared()
+                    ) {
+                        Label("Select Photos", systemImage: "photo.on.rectangle")
+                            .font(.headline)
+                            .padding()
+                            .frame(maxWidth: 220)
+                            .background(Color.accentColor)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                    Spacer()
+                }
+            } else {
+                List {
+                    ForEach($pendingItems) { $item in
+                        Section {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Image(uiImage: item.image)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxHeight: 180)
+                                    .cornerRadius(8)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                
+                                DatePicker("Date Taken", selection: $item.dateTaken, displayedComponents: [.date, .hourAndMinute])
+                                
+                                TextField("People (e.g. Sienna, Daniel)", text: $item.peopleText)
+                                    .textFieldStyle(.roundedBorder)
+                                
+                                TextField("Location (e.g. Toronto, ON)", text: $item.location)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+                            .padding(.vertical, 4)
                         }
                     }
                 }
-                .padding(.horizontal)
+                .listStyle(.insetGrouped)
                 
-                // Upload Controls
-                HStack(spacing: 12) {
-                    PhotosPicker(selection: $selectedItem, matching: .images) {
-                        Label("Select Photo", systemImage: "photo")
+                VStack(spacing: 10) {
+                    if !statusMessage.isEmpty {
+                        Text(statusMessage)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
-                    .buttonStyle(.bordered)
                     
-                    Button("Upload to Cloud") {
-                        uploadSelectedPhoto()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(selectedImage == nil || isUploading)
-                }
-                
-                Divider()
-                    .padding(.vertical, 8)
-                
-                // DOWNLOAD BUTTON
-                if isDownloading {
-                    ProgressView("Fetching images from Cloud...")
-                } else {
-                    Button(action: downloadAllCloudImages) {
-                        Label("Download from Cloud", systemImage: "arrow.down.circle.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.indigo)
-                    .padding(.horizontal)
-                }
-                
-                Text(statusMessage)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                
-                // DOWNLOADED GALLERY GRID WITH DELETE UI
-                if !downloadedPhotos.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Cloud Gallery (\(downloadedPhotos.count))")
-                            .font(.headline)
+                    HStack(spacing: 12) {
+                        PhotosPicker(selection: $selectedPickerItems, matching: .images) {
+                            Label("Change", systemImage: "photo")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isUploading)
                         
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 110))], spacing: 16) {
-                            ForEach(downloadedPhotos) { photo in
-                                ZStack(alignment: .topTrailing) {
-                                    Image(uiImage: photo.image)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 110, height: 110)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    
-                                    // Delete Button (Only visible if the photo belongs to current user)
-                                    if photo.isOwnedBy(userId: localId) {
-                                        Button {
-                                            deletePhoto(photo)
-                                        } label: {
-                                            Image(systemName: "trash.circle.fill")
-                                                .font(.title2)
-                                                .symbolRenderingMode(.multicolor)
-                                                .background(Circle().fill(Color.white))
-                                        }
-                                        .padding(4)
-                                    }
-                                }
+                        Button(action: uploadAllPhotos) {
+                            if isUploading {
+                                ProgressView()
+                            } else {
+                                Label("Upload (\(pendingItems.count))", systemImage: "icloud.and.arrow.up")
                             }
                         }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(isUploading)
                     }
-                    .padding(.horizontal)
+                    .padding()
                 }
+                .background(Color(.systemGroupedBackground))
             }
-            .padding(.vertical)
         }
-        .onChange(of: selectedItem) { oldValue, newValue in
-            loadSelectedPhoto(from: newValue)
+        .navigationTitle("Upload Memories")
+        .onChange(of: selectedPickerItems) { _, newItems in
+            loadSelectedPhotos(from: newItems)
         }
     }
     
-    // DOWNLOAD FLOW
-    private func downloadAllCloudImages() {
+    private func loadSelectedPhotos(from items: [PhotosPickerItem]) {
         Task {
+            var newPendingItems: [PendingUploadItem] = []
+            for item in items {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    newPendingItems.append(PendingUploadItem(image: image))
+                }
+            }
             await MainActor.run {
-                isDownloading = true
-                statusMessage = "Finding all uploaded files..."
-                downloadedPhotos.removeAll()
-            }
-            
-            do {
-                let paths = try await NetworkManager.shared.listFiles(prefix: "users/", idToken: token)
-                let imagePaths = paths.filter { !$0.hasSuffix("/") }
-                
-                if imagePaths.isEmpty {
-                    await MainActor.run {
-                        statusMessage = "No images found in cloud storage."
-                        isDownloading = false
-                    }
-                    return
-                }
-                
-                var fetchedPhotos: [CloudPhoto] = []
-                for (index, path) in imagePaths.enumerated() {
-                    await MainActor.run {
-                        statusMessage = "Downloading image \(index + 1) of \(imagePaths.count)..."
-                    }
-                    let img = try await NetworkManager.shared.downloadImage(path: path, idToken: token)
-                    fetchedPhotos.append(CloudPhoto(path: path, image: img))
-                }
-                
-                await MainActor.run {
-                    self.downloadedPhotos = fetchedPhotos
-                    self.statusMessage = "Successfully loaded \(fetchedPhotos.count) photo(s)!"
-                    self.isDownloading = false
-                }
-                
-            } catch {
-                await MainActor.run {
-                    statusMessage = "Download error: \(error.localizedDescription)"
-                    isDownloading = false
-                }
+                self.pendingItems = newPendingItems
             }
         }
     }
     
-    // DELETE FLOW
-    private func deletePhoto(_ photo: CloudPhoto) {
-        Task {
-            await MainActor.run {
-                statusMessage = "Deleting image..."
-            }
-            
-            do {
-                try await NetworkManager.shared.deleteImage(path: photo.path, idToken: token)
-                
-                await MainActor.run {
-                    // Remove photo locally from UI array upon successful deletion
-                    self.downloadedPhotos.removeAll { $0.id == photo.id }
-                    self.statusMessage = "Image deleted successfully."
-                }
-            } catch {
-                await MainActor.run {
-                    self.statusMessage = "Deletion error: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-    
-    private func loadSelectedPhoto(from item: PhotosPickerItem?) {
-        guard let item else { return }
-        Task {
-            if let data = try? await item.loadTransferable(type: Data.self),
-               let image = UIImage(data: data) {
-                await MainActor.run {
-                    self.selectedImage = image
-                    self.statusMessage = "Photo ready! Click Upload to Cloud."
-                }
-            }
-        }
-    }
-    
-    private func uploadSelectedPhoto() {
-        guard let imageToUpload = selectedImage else { return }
+    private func uploadAllPhotos() {
         Task {
             await MainActor.run {
                 isUploading = true
-                statusMessage = "Uploading image..."
+                statusMessage = "Starting upload..."
             }
             
-            let filename = "photo_\(UUID().uuidString).jpg"
-            let destinationPath = "users/\(localId)/\(filename)"
-            
-            do {
-                _ = try await NetworkManager.shared.uploadImage(
-                    image: imageToUpload,
-                    path: destinationPath,
-                    idToken: token
-                )
+            for (index, item) in pendingItems.enumerated() {
+                let photoId = UUID().uuidString
+                let destinationPath = "users/\(localId)/\(photoId).jpg"
                 
-                await MainActor.run {
-                    statusMessage = "Upload Complete! Click Download to refresh gallery."
-                    isUploading = false
-                    selectedImage = nil
+                do {
+                    // 1. Storage Upload
+                    _ = try await NetworkManager.shared.uploadImage(
+                        image: item.image,
+                        path: destinationPath,
+                        idToken: token
+                    )
+                    
+                    // 2. People String Parsing
+                    let peopleArray = item.peopleText
+                        .components(separatedBy: ",")
+                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                    
+                    // 3. Metadata Save
+                    let metadata = PhotoMetadata(
+                        id: photoId,
+                        storagePath: destinationPath,
+                        dateTaken: item.dateTaken,
+                        dateUploaded: Date(),
+                        people: peopleArray,
+                        location: item.location,
+                        userId: localId
+                    )
+                    
+                    try await FirestoreManager.shared.savePhotoMetadata(metadata, idToken: token)
+                    
+                    await MainActor.run {
+                        statusMessage = "Uploaded \(index + 1) of \(pendingItems.count)..."
+                    }
+                } catch {
+                    await MainActor.run {
+                        statusMessage = "Error on photo \(index + 1): \(error.localizedDescription)"
+                        isUploading = false
+                    }
+                    return
                 }
-            } catch {
-                await MainActor.run {
-                    statusMessage = "Upload Error: \(error.localizedDescription)"
-                    isUploading = false
-                }
+            }
+            
+            await MainActor.run {
+                isUploading = false
+                dismiss() // Return to ImageGalleryView
             }
         }
     }
 }
-
 
 
 //#Preview("Image Upload Playground") {

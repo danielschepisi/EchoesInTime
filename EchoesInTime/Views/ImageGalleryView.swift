@@ -33,7 +33,7 @@ struct ImageGalleryView: View {
             } else {
                 List(galleryItems) { item in
                     ImageView(item: item)
-                    .padding(.vertical, 4)
+                        .padding(.vertical, 4)
                 }
                 .listStyle(.plain)
             }
@@ -59,11 +59,9 @@ struct ImageGalleryView: View {
     
     private func fetchGalleryData() {
         Task {
-            await MainActor.run {
-                isLoading = true
-                statusMessage = "Fetching metadata..."
-                galleryItems.removeAll()
-            }
+            isLoading = true
+            statusMessage = "Fetching metadata..."
+            galleryItems.removeAll()
             
             do {
                 let metadataList = try await FirestoreManager.shared.fetchPhotoMetadata(for: localId, idToken: token)
@@ -73,7 +71,7 @@ struct ImageGalleryView: View {
                     await MainActor.run {
                         statusMessage = "Downloading image \(index + 1) of \(metadataList.count)..."
                     }
-                    let image = try await NetworkManager.shared.downloadImage(path: meta.storagePath, idToken: token)
+                    let image = try await NetworkManager.shared.downloadImage(path: meta.storagePath)
                     items.append(GalleryPhotoItem(id: meta.id, metadata: meta, image: image))
                 }
                 

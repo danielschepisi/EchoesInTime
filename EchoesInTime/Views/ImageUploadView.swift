@@ -137,8 +137,7 @@ struct ImageUploadView: View {
                     // 1. Storage Upload
                     _ = try await NetworkManager.shared.uploadImage(
                         image: item.image,
-                        path: destinationPath,
-                        idToken: token
+                        path: destinationPath
                     )
                     
                     // 2. People String Parsing

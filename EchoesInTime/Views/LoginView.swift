@@ -13,6 +13,7 @@ struct LoginView: View {
     @State private var emailInput = "XXXXXX"
     @State private var passwordInput = "XXXXXX"
     @State private var isLoading = false
+    @State private var isFullyAuthenticated = false
     
     // Toggle between Sign In and Sign Up modes
     @State private var isSignUpMode = false
@@ -24,7 +25,7 @@ struct LoginView: View {
                     .font(.largeTitle)
                     .bold()
                 
-                Text(isSignUpMode ? "Create a New Account" : "Admin & Developer Sign In")
+                Text(isSignUpMode ? "Create a New Account" : "Sign In to Access Historical Beauty")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
@@ -43,13 +44,14 @@ struct LoginView: View {
                     ProgressView(isSignUpMode ? "Creating account..." : "Signing in...")
                 } else {
                     Button(isSignUpMode ? "Create Account" : "Sign In") {
+                    //TODO: clean email/password first (?whitespaces, newlines, min chars). can make button unavailable with text stating what needs to change. or can present warning on tapping button
                         handleAuthAction()
                     }
                     .buttonStyle(.borderedProminent)
                     
                     Button(isSignUpMode ? "Already have an account? Sign In" : "Need an account? Sign Up") {
                         isSignUpMode.toggle()
-                        networkManager.errorMessage = nil // Clear previous errors on toggle
+                        networkManager.errorMessage = nil
                     }
                     .font(.subheadline)
                     .foregroundColor(.accentColor)
@@ -65,10 +67,14 @@ struct LoginView: View {
             }
             .padding()
             // Automatically navigates to ImageGalleryView when token and localId become non-nil
-            .navigationDestination(isPresented: Binding(
-                get: { networkManager.token != nil && networkManager.localId != nil },
-                set: { _ in }
-            )) {
+            .onChange(of: networkManager.token) { _, _ in
+                checkAuth()
+            }
+            .onChange(of: networkManager.localId) { _, _ in
+                checkAuth()
+            }
+            .navigationDestination(isPresented: $isFullyAuthenticated) {
+                //TODO: maybe fatal error
                 if let token = networkManager.token, let localId = networkManager.localId {
                     ImageGalleryView(token: token, localId: localId)
                 }
@@ -76,18 +82,22 @@ struct LoginView: View {
         }
     }
     
+    //TODO: check if we really need this
+    private func checkAuth() {
+        isFullyAuthenticated = (networkManager.token != nil && networkManager.localId != nil)
+    }
+    
     // Calls signUp or signIn depending on the current mode
     private func handleAuthAction() {
         Task {
-            await MainActor.run { isLoading = true }
+            isLoading = true
+            defer { isLoading = false }
             
             if isSignUpMode {
                 await networkManager.signUp(email: emailInput, password: passwordInput)
             } else {
                 await networkManager.signIn(email: emailInput, password: passwordInput)
             }
-            
-            await MainActor.run { isLoading = false }
         }
     }
 }

@@ -25,25 +25,8 @@ class FirestoreManager {
         request.httpMethod = "PATCH"
         request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let isoFormatter = ISO8601DateFormatter()
-        
-        let firestoreFields: [String: Any] = [
-            "fields": [
-                "id": ["stringValue": metadata.id],
-                "storagePath": ["stringValue": metadata.storagePath],
-                "dateTaken": ["timestampValue": isoFormatter.string(from: metadata.dateTaken)],
-                "dateUploaded": ["timestampValue": isoFormatter.string(from: metadata.dateUploaded)],
-                "people": [
-                    "arrayValue": [
-                        "values": metadata.people.map { ["stringValue": $0] }
-                    ]
-                ],
-                "location": ["stringValue": metadata.location],
-                "userId": ["stringValue": metadata.userId]
-            ]
-        ]
-        
+                
+        let firestoreFields = metadata.toFirestoreRESTPayload()
         request.httpBody = try JSONSerialization.data(withJSONObject: firestoreFields)
         
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -54,13 +37,14 @@ class FirestoreManager {
     }
     
     /// Fetches all metadata documents belonging to user
+    /// Fetches all metadata documents belonging to user
     func fetchPhotoMetadata(for userId: String, idToken: String) async throws -> [PhotoMetadata] {
         let cleanToken = idToken.trimmingCharacters(in: .whitespacesAndNewlines)
         
         var components = URLComponents()
         components.scheme = "https"
         components.host = "firestore.googleapis.com"
-        components.path = "/v1/projects/echoes-in-time/databases/(default)/documents/photos"
+        components.path = "/v1/projects/\(Secrets.projectId)/databases/(default)/documents/photos"
         
         guard let url = components.url else {
             throw StorageError.invalidURL
@@ -73,20 +57,24 @@ class FirestoreManager {
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
+        //TODO: should 500 be hardcoded or grabbed from somewhere like httpResponse.statusCode . Or we did start some custom Errors, continue down that pathway?
+        
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            let errorMsg = String(data: data, encoding: .utf8) ?? "Unknown server error"
-            print("❌ Firestore GET Error: \(errorMsg)")
-            throw StorageError.invalidResponse
+            let errorMsg = String(data: data, encoding: .utf8) ?? "Metadata fetch failed"
+            throw NSError(domain: "FirestoreError", code: 500, userInfo: [NSLocalizedDescriptionKey: errorMsg])
         }
         
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard let documents = json?["documents"] as? [[String: Any]] else {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(domain: "FirestoreError", code: 500, userInfo: [NSLocalizedDescriptionKey: "Invalid Firestore response format"])
+        }
+        
+        guard let documents = json["documents"] as? [[String: Any]] else {
             return []
         }
         
         // Parse complete models and filter for the active user
         return documents
             .compactMap { PhotoMetadata(fromFirestoreREST: $0) }
-            .filter { $0.userId == userId }
+//            .filter { $0.userId == userId }
     }
 }

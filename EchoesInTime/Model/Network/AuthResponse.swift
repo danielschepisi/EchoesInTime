@@ -9,6 +9,7 @@ import Foundation
 
 struct AuthResponse: Decodable {
     let idToken: String
+    let refreshToken: String
     let localId: String
     let email: String
 }

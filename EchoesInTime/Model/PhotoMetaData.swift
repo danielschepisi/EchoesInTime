@@ -29,14 +29,21 @@ struct PendingUploadItem: Identifiable {
     var location: String = ""
 }
 
-/// Loaded photo item for gallery displaying image + metadata
-struct GalleryPhotoItem: Identifiable {
-    let id: String
-    let metadata: PhotoMetadata
-    let image: UIImage
-}
-
 extension PhotoMetadata {
+    
+    private static func parseISO8601Date(_ value: String?) -> Date? {
+        guard let value, !value.isEmpty else { return nil }
+
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let parsed = fractionalFormatter.date(from: value) {
+            return parsed
+        }
+
+        let standardFormatter = ISO8601DateFormatter()
+        standardFormatter.formatOptions = [.withInternetDateTime]
+        return standardFormatter.date(from: value)
+    }
     
     /// Decodes a raw Firestore REST document payload into a PhotoMetadata instance
     init?(fromFirestoreREST document: [String: Any]) {
@@ -46,7 +53,8 @@ extension PhotoMetadata {
         }
         
         // Extract the document ID from the full resource path (.../photos/DOC_ID)
-        let docId = name.components(separatedBy: "/").last ?? UUID().uuidString
+        let rawLastComponent = name.components(separatedBy: "/").last
+        let docId = (rawLastComponent?.isEmpty == false) ? rawLastComponent! : UUID().uuidString
         
         // Required Fields
         guard let storagePathDict = fields["storagePath"] as? [String: Any],
@@ -61,14 +69,11 @@ extension PhotoMetadata {
         let location = (fields["location"] as? [String: Any])?["stringValue"] as? String ?? ""
         
         // Date Parsing (Firestore REST outputs ISO 8601 strings in "timestampValue")
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
-        let dateTakenString = (fields["dateTaken"] as? [String: Any])?["timestampValue"] as? String ?? ""
-        let dateTaken = formatter.date(from: dateTakenString) ?? Date()
-        
-        let dateUploadedString = (fields["dateUploaded"] as? [String: Any])?["timestampValue"] as? String ?? ""
-        let dateUploaded = formatter.date(from: dateUploadedString) ?? Date()
+        let dateTakenString = (fields["dateTaken"] as? [String: Any])?["timestampValue"] as? String
+        let dateTaken = Self.parseISO8601Date(dateTakenString) ?? Date()
+
+        let dateUploadedString = (fields["dateUploaded"] as? [String: Any])?["timestampValue"] as? String
+        let dateUploaded = Self.parseISO8601Date(dateUploadedString) ?? Date()
         
         // Array Parsing (Firestore REST outputs arrays as nested "arrayValue" -> "values")
         var peopleList: [String] = []

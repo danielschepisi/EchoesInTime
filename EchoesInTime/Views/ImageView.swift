@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct ImageView: View {
-    
     let item : GalleryPhotoItem
     
     var body: some View {

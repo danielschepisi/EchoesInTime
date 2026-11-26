@@ -10,8 +10,8 @@ import SwiftUI
 struct LoginView: View {
     @StateObject private var networkManager = NetworkManager.shared
     //NO COMMIT THIS********
-    @State private var emailInput = "XXXXXX"
-    @State private var passwordInput = "XXXXXX"
+    @State private var emailInput = ""
+    @State private var passwordInput = ""
     @State private var isLoading = false
     @State private var isFullyAuthenticated = false
     
@@ -30,7 +30,7 @@ struct LoginView: View {
                     .foregroundColor(.secondary)
                 
                 VStack(spacing: 12) {
-                    TextField("Email", text: $emailInput)
+                    TextField("Your Email", text: $emailInput)
                         .textFieldStyle(.roundedBorder)
                         .autocapitalization(.none)
                         .keyboardType(.emailAddress)

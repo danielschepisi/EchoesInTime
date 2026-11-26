@@ -30,7 +30,6 @@ struct PendingUploadItem: Identifiable {
 }
 
 extension PhotoMetadata {
-    
     private static func parseISO8601Date(_ value: String?) -> Date? {
         guard let value, !value.isEmpty else { return nil }
 

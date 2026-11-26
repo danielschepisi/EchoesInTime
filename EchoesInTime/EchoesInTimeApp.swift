@@ -5,6 +5,7 @@
 //  Created by Daniel Schepisi on 20/8/2026.
 //
 
+import SwiftData
 import SwiftUI
 
 @main
@@ -13,5 +14,6 @@ struct EchoesInTimeApp: App {
         WindowGroup {
             LoginView()
         }
+        .modelContainer(for: CachedPhoto.self)
     }
 }

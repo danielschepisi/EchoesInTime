@@ -3,36 +3,44 @@
 //  EchoesInTime
 //
 //  Created by Daniel Schepisi on 24/8/2026.
-//
 
+import SwiftData
 import SwiftUI
 
 struct ImageGalleryView: View {
     let token: String
     let localId: String
-    
-    @State private var galleryItems: [GalleryPhotoItem] = []
-    @State private var isLoading = false
-    @State private var statusMessage = "Loading gallery..."
-    
+
+    @Environment(\.modelContext) private var modelContext
+
+    @Query(
+        filter: #Predicate<CachedPhoto> { !$0.isDeleted },
+        sort: \CachedPhoto.dateTaken,
+        order: .reverse
+    )
+    private var cachedPhotos: [CachedPhoto]
+
+    @State private var isSyncing = false
+    @State private var statusMessage: String?
+
     var body: some View {
         Group {
-            if isLoading {
+            if cachedPhotos.isEmpty && isSyncing {
                 VStack(spacing: 12) {
                     ProgressView()
-                    Text(statusMessage)
+                    Text(statusMessage ?? "Syncing gallery...")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
-            } else if galleryItems.isEmpty {
+            } else if cachedPhotos.isEmpty {
                 ContentUnavailableView(
                     "No Memories Found",
                     systemImage: "photo.on.rectangle.angled",
                     description: Text("Tap upload to save your first memory.")
                 )
             } else {
-                List(galleryItems) { item in
-                    ImageView(item: item)
+                List(cachedPhotos) { photo in
+                    ImageView(photo: photo)
                         .padding(.vertical, 4)
                 }
                 .listStyle(.plain)
@@ -42,9 +50,16 @@ struct ImageGalleryView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: fetchGalleryData) {
-                    Image(systemName: "arrow.clockwise")
+                Button {
+                    Task { await syncAndCacheMissingImages() }
+                } label: {
+                    if isSyncing {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
                 }
+                .disabled(isSyncing)
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink(destination: ImageUploadView(token: token, localId: localId)) {
@@ -53,39 +68,50 @@ struct ImageGalleryView: View {
             }
         }
         .task {
-            fetchGalleryData()
+            await syncAndCacheMissingImages()
         }
     }
-    
-    private func fetchGalleryData() {
-        Task {
-            isLoading = true
-            statusMessage = "Fetching metadata..."
-            galleryItems.removeAll()
-            
+
+    private func syncAndCacheMissingImages() async {
+        guard !isSyncing else { return }
+        isSyncing = true
+        statusMessage = "Syncing metadata..."
+        defer {
+            isSyncing = false
+            statusMessage = nil
+        }
+
+        // 1. Pull delta metadata into SwiftData
+        print("A. entered ImageGalleryView syncAndCacheMissingImages")
+        await SyncCoordinator.shared.pullChanges(
+            userId: localId,
+            idToken: token,
+            in: modelContext
+        )
+        print("B. pullChanges finished")
+
+        // 2. Download and cache any photo that doesn't have a valid file on disk yet
+        let descriptor = FetchDescriptor<CachedPhoto>(
+            predicate: #Predicate { !$0.isDeleted }
+        )
+
+        guard let allPhotos = try? modelContext.fetch(descriptor) else { return }
+
+        for photo in allPhotos {
+            // Skip if file already exists on disk
+            if LocalImageCache.loadImage(filename: photo.localImageFilename) != nil {
+                continue
+            }
+
             do {
-                let metadataList = try await FirestoreManager.shared.fetchPhotoMetadata(for: localId, idToken: token)
-                var items: [GalleryPhotoItem] = []
-                
-                for (index, meta) in metadataList.enumerated() {
-                    await MainActor.run {
-                        statusMessage = "Downloading image \(index + 1) of \(metadataList.count)..."
-                    }
-                    let image = try await NetworkManager.shared.downloadImage(path: meta.storagePath)
-                    items.append(GalleryPhotoItem(id: meta.id, metadata: meta, image: image))
-                }
-                
-                await MainActor.run {
-                    self.galleryItems = items
-                    self.isLoading = false
-                }
+                let image = try await NetworkManager.shared.downloadImage(path: photo.storagePath)
+                let filename = try LocalImageCache.saveImage(image, id: photo.id)
+                photo.localImageFilename = filename
             } catch {
-                await MainActor.run {
-                    self.statusMessage = "Failed to load: \(error.localizedDescription)"
-                    print("Failed to load: \(error.localizedDescription)")
-                    self.isLoading = false
-                }
+                print("Failed to cache image for \(photo.id): \(error.localizedDescription)")
             }
         }
+
+        try? modelContext.save()
     }
 }

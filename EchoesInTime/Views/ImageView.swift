@@ -2,38 +2,45 @@
 //  ImageView.swift
 //  EchoesInTime
 //
-//  Created by Daniel Schepisi on 25/8/2026.
-//
 
 import SwiftUI
 
 struct ImageView: View {
-    let item : GalleryPhotoItem
-    
+    let photo: CachedPhoto
+
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(uiImage: item.image)
-                .resizable()
-                .scaledToFill()
+            if let uiImage = LocalImageCache.loadImage(filename: photo.localImageFilename) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 85, height: 85)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(.secondarySystemBackground))
+                    ProgressView()
+                }
                 .frame(width: 85, height: 85)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            
+            }
+
             VStack(alignment: .leading, spacing: 5) {
-                if !item.metadata.location.isEmpty {
-                    Label(item.metadata.location, systemImage: "mappin.and.ellipse")
+                if !photo.location.isEmpty {
+                    Label(photo.location, systemImage: "mappin.and.ellipse")
                         .font(.headline)
                 }
-                
-                Text("Taken: \(item.metadata.dateTaken.formatted(date: .abbreviated, time: .shortened))")
+
+                Text("Taken: \(photo.dateTaken.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
-                if !item.metadata.people.isEmpty {
+
+                if !photo.people.isEmpty {
                     HStack(spacing: 4) {
                         Image(systemName: "person.2.fill")
                             .font(.caption2)
                             .foregroundColor(.secondary)
-                        Text(item.metadata.people.joined(separator: ", "))
+                        Text(photo.people.joined(separator: ", "))
                             .font(.caption)
                             .lineLimit(2)
                     }

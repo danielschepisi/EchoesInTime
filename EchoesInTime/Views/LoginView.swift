@@ -89,14 +89,22 @@ struct LoginView: View {
     
     // Calls signUp or signIn depending on the current mode
     private func handleAuthAction() {
+        print("1. handleAuthAction started")
         Task {
             isLoading = true
-            defer { isLoading = false }
+            defer {
+                isLoading = false
+                print("4. handleAuthAction finished, isLoading reset")
+            }
+            
             
             if isSignUpMode {
                 await networkManager.signUp(email: emailInput, password: passwordInput)
             } else {
+                print("2. calling signIn...")
+
                 await networkManager.signIn(email: emailInput, password: passwordInput)
+                print("3. signIn returned. token: \(networkManager.token != nil), localId: \(networkManager.localId != nil), error: \(networkManager.errorMessage ?? "none")")
             }
         }
     }

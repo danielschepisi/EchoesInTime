@@ -299,7 +299,7 @@ class NetworkManager: ObservableObject {
     func deleteImage(path: String) async throws {
         let url = try makeStorageObjectURL(path: path)
         
-        let (data, httpResponse) = try await performAuthenticatedRequest { authToken in
+        let (_, httpResponse) = try await performAuthenticatedRequest { authToken in
             var request = URLRequest(url: url)
             request.httpMethod = "DELETE"
             request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")

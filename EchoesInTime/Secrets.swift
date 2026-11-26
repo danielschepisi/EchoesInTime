@@ -18,11 +18,22 @@ enum Secrets {
     }
     
     static var storageBucket: String {
-            guard let filePath = Bundle.main.path(forResource: "Secrets", ofType: "plist"),
-                  let dict = NSDictionary(contentsOfFile: filePath),
-                  let value = dict["STORAGE_BUCKET"] as? String else {
-                fatalError("STORAGE_BUCKET not found in Secrets.plist")
-            }
-            return value
+        guard let filePath = Bundle.main.path(forResource: "Secrets", ofType: "plist"),
+              let dict = NSDictionary(contentsOfFile: filePath),
+              let value = dict["STORAGE_BUCKET"] as? String else {
+            fatalError("STORAGE_BUCKET not found in Secrets.plist")
         }
+        return value
+    }
+    
+    static var projectId: String {
+        guard let filePath = Bundle.main.path(forResource: "Secrets", ofType: "plist"),
+              let dict = NSDictionary(contentsOfFile: filePath),
+              let value = dict["FIRESTORE_PROJECT_ID"] as? String else {
+            fatalError("firestoreProjectId not found in Secrets.plist")
+        }
+        return value
+    }
+    
+    //"echoes-in-time"
 }

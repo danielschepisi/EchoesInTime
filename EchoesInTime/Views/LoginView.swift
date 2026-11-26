@@ -9,12 +9,13 @@ import SwiftUI
 
 struct LoginView: View {
     @StateObject private var networkManager = NetworkManager.shared
-    
-    @State private var emailInput = "admin@test.com"
-    @State private var passwordInput = "youcandoit"
+    //NO COMMIT THIS********
+    @State private var emailInput = ""
+    @State private var passwordInput = ""
     @State private var isLoading = false
+    @State private var isFullyAuthenticated = false
     
-    // 1. Add state to toggle between Sign In and Sign Up modes
+    // Toggle between Sign In and Sign Up modes
     @State private var isSignUpMode = false
     
     var body: some View {
@@ -24,13 +25,12 @@ struct LoginView: View {
                     .font(.largeTitle)
                     .bold()
                 
-                // 2. Dynamic header text
-                Text(isSignUpMode ? "Create a New Account" : "Admin & Developer Sign In")
+                Text(isSignUpMode ? "Create a New Account" : "Sign In to Access Historical Beauty")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 
                 VStack(spacing: 12) {
-                    TextField("Email", text: $emailInput)
+                    TextField("Your Email", text: $emailInput)
                         .textFieldStyle(.roundedBorder)
                         .autocapitalization(.none)
                         .keyboardType(.emailAddress)
@@ -43,16 +43,15 @@ struct LoginView: View {
                 if isLoading {
                     ProgressView(isSignUpMode ? "Creating account..." : "Signing in...")
                 } else {
-                    // 3. Primary action button switches function based on mode
                     Button(isSignUpMode ? "Create Account" : "Sign In") {
+                    //TODO: clean email/password first (?whitespaces, newlines, min chars). can make button unavailable with text stating what needs to change. or can present warning on tapping button
                         handleAuthAction()
                     }
                     .buttonStyle(.borderedProminent)
                     
-                    // 4. Toggle button to switch between Sign In and Sign Up
                     Button(isSignUpMode ? "Already have an account? Sign In" : "Need an account? Sign Up") {
                         isSignUpMode.toggle()
-                        networkManager.errorMessage = nil // Clear previous errors on toggle
+                        networkManager.errorMessage = nil
                     }
                     .font(.subheadline)
                     .foregroundColor(.accentColor)
@@ -67,30 +66,38 @@ struct LoginView: View {
                 }
             }
             .padding()
-            // Automatically navigates when token and localId become non-nil (works for both Sign In and Sign Up!)
-            .navigationDestination(isPresented: Binding(
-                get: { networkManager.token != nil && networkManager.localId != nil },
-                set: { _ in }
-            )) {
+            // Automatically navigates to ImageGalleryView when token and localId become non-nil
+            .onChange(of: networkManager.token) { _, _ in
+                checkAuth()
+            }
+            .onChange(of: networkManager.localId) { _, _ in
+                checkAuth()
+            }
+            .navigationDestination(isPresented: $isFullyAuthenticated) {
+                //TODO: maybe fatal error
                 if let token = networkManager.token, let localId = networkManager.localId {
-                    ImageUploadView(token: token, localId: localId)
+                    ImageGalleryView(token: token, localId: localId)
                 }
             }
         }
     }
     
-    // 5. Calls signUp or signIn depending on the current mode
+    //TODO: check if we really need this
+    private func checkAuth() {
+        isFullyAuthenticated = (networkManager.token != nil && networkManager.localId != nil)
+    }
+    
+    // Calls signUp or signIn depending on the current mode
     private func handleAuthAction() {
         Task {
-            await MainActor.run { isLoading = true }
+            isLoading = true
+            defer { isLoading = false }
             
             if isSignUpMode {
                 await networkManager.signUp(email: emailInput, password: passwordInput)
             } else {
                 await networkManager.signIn(email: emailInput, password: passwordInput)
             }
-            
-            await MainActor.run { isLoading = false }
         }
     }
 }

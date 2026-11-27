@@ -44,8 +44,17 @@ struct ImageGalleryView: View {
                 }
             } else {
                 List(cachedPhotos) { photo in
-                    ImageView(photo: photo)
-                        .padding(.vertical, 4)
+                    NavigationLink(destination: PhotoDetailView(photo: photo, token: token, localId: localId)) {
+                        ImageView(photo: photo)
+                            .padding(.vertical, 4)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            deletePhoto(photo)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
                 }
                 .listStyle(.plain)
             }
@@ -99,7 +108,15 @@ struct ImageGalleryView: View {
         )
         print("B. pullChanges finished")
 
-        // 2. Download and cache any photo that doesn't have a valid file on disk yet.
+        // 2. Push any pending local changes
+        await SyncCoordinator.shared.pushChanges(
+            userId: localId,
+            idToken: token,
+            in: modelContext
+        )
+        print("B2. pushChanges finished")
+
+        // 3. Download and cache any photo that doesn't have a valid file on disk yet.
         // Fetch everything and filter in memory (avoids #Predicate issues).
         guard let fetched = try? modelContext.fetch(FetchDescriptor<CachedPhoto>()) else {
             print("C. failed to fetch CachedPhoto from modelContext")
@@ -129,5 +146,22 @@ struct ImageGalleryView: View {
 
         try? modelContext.save()
         print("F. syncAndCacheMissingImages completed")
+    }
+
+    private func deletePhoto(_ photo: CachedPhoto) {
+        photo.isSoftDeleted = true
+        photo.needsSync = true
+        photo.localModifiedAt = Date()
+        try? modelContext.save()
+
+        LocalImageCache.deleteImage(filename: photo.localImageFilename)
+
+        Task {
+            await SyncCoordinator.shared.pushChanges(
+                userId: localId,
+                idToken: token,
+                in: modelContext
+            )
+        }
     }
 }

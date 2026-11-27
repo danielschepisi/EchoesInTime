@@ -135,6 +135,44 @@ final class SyncCoordinator: ObservableObject {
         }
     }
 
+    // MARK: - Push Local Changes
+
+    func pushChanges(
+        userId: String,
+        idToken: String? = nil,
+        in context: ModelContext
+    ) async {
+        let activeToken: String
+        do {
+            if let provided = idToken, !provided.isEmpty {
+                activeToken = provided
+            } else {
+                activeToken = try await NetworkManager.shared.refreshIDToken()
+            }
+        } catch {
+            print("PUSH_ERR: Token refresh failed: \(error.localizedDescription)")
+            return
+        }
+
+        let descriptor = FetchDescriptor<CachedPhoto>(
+            predicate: #Predicate { $0.needsSync == true }
+        )
+
+        guard let dirtyPhotos = try? context.fetch(descriptor) else { return }
+
+        for photo in dirtyPhotos {
+            let dto = photo.toDTO()
+            do {
+                try await FirestoreManager.shared.savePhotoMetadata(dto, idToken: activeToken)
+                photo.needsSync = false
+            } catch {
+                print("PUSH_ERR: Failed to push \(photo.id): \(error.localizedDescription)")
+            }
+        }
+
+        try? context.save()
+    }
+
     // MARK: - Firestore `:runQuery` Delta Fetch
 
     private func fetchUpdatedPhotos(since date: Date, idToken: String) async throws -> [PhotoMetadata] {

@@ -5,14 +5,16 @@
 //  Created by Daniel Schepisi on 20/8/2026.
 //
 
-import SwiftUI
 import PhotosUI
+import SwiftData
+import SwiftUI
 
 struct ImageUploadView: View {
     let token: String
     let localId: String
     
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @State private var selectedPickerItems: [PhotosPickerItem] = []
     @State private var pendingItems: [PendingUploadItem] = []
     @State private var isUploading = false
@@ -135,30 +137,40 @@ struct ImageUploadView: View {
                 
                 do {
                     // 1. Storage Upload
-                    _ = try await NetworkManager.shared.uploadImage(
+                    let downloadURL = try await NetworkManager.shared.uploadImage(
                         image: item.image,
                         path: destinationPath
                     )
-                    
+
                     // 2. People String Parsing
                     let peopleArray = item.peopleText
                         .components(separatedBy: ",")
                         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                         .filter { !$0.isEmpty }
-                    
+
                     // 3. Metadata Save
                     let metadata = PhotoMetadata(
                         id: photoId,
                         storagePath: destinationPath,
+                        downloadURL: downloadURL,
                         dateTaken: item.dateTaken,
                         dateUploaded: Date(),
                         people: peopleArray,
                         location: item.location,
                         userId: localId
                     )
-                    
+
                     try await FirestoreManager.shared.savePhotoMetadata(metadata, idToken: token)
-                    
+
+                    // 4. Create local SwiftData entry so photo appears immediately
+                    let cachedPhoto = CachedPhoto(from: metadata)
+                    if let filename = try? LocalImageCache.saveImage(item.image, id: photoId) {
+                        cachedPhoto.localImageFilename = filename
+                    }
+                    await MainActor.run {
+                        modelContext.insert(cachedPhoto)
+                    }
+
                     await MainActor.run {
                         statusMessage = "Uploaded \(index + 1) of \(pendingItems.count)..."
                     }
@@ -172,8 +184,9 @@ struct ImageUploadView: View {
             }
             
             await MainActor.run {
+                try? modelContext.save()
                 isUploading = false
-                dismiss() // Return to ImageGalleryView
+                dismiss()
             }
         }
     }

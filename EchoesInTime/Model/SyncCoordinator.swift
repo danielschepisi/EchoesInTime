@@ -37,11 +37,6 @@ final class SyncCoordinator: ObservableObject {
     // MARK: - Pull / Delta Sync
 
     /// Pulls new or updated photo metadata from Firestore and merges into SwiftData.
-    /// - Parameters:
-    ///   - scopeId: Key for storing `lastCloudSyncAt` (use `userId` or a shared album/library key).
-    ///   - filterByUserId: Set to `true` only if each user should see strictly their own `userId` items.
-    ///   - context: SwiftData `ModelContext` to upsert into.
-    // In SyncCoordinator.swift:
     func pullChanges(
         userId: String,
         idToken: String? = nil,
@@ -73,7 +68,10 @@ final class SyncCoordinator: ObservableObject {
                 let sinceDate = cursor.addingTimeInterval(-overlapSeconds)
                 incoming = try await fetchUpdatedPhotos(since: sinceDate, idToken: activeToken)
             } else {
-                incoming = try await FirestoreManager.shared.fetchPhotoMetadata(for: userId, idToken: activeToken)
+                incoming = try await FirestoreManager.shared.fetchPhotoMetadata(
+                    for: userId,
+                    idToken: activeToken
+                )
             }
             print("S3. fetched \(incoming.count) items")
 
@@ -96,6 +94,7 @@ final class SyncCoordinator: ObservableObject {
             }
 
             try context.save()
+            print("S4. saved \(incoming.count) items to SwiftData")
 
             if let newCursor = maxServerTimestamp {
                 setLastCloudSyncAt(newCursor, for: keyScope)
@@ -114,7 +113,7 @@ final class SyncCoordinator: ObservableObject {
         let existing = try context.fetch(descriptor).first
 
         guard let local = existing else {
-            guard !dto.isDeleted else { return }
+            guard !dto.isSoftDeleted else { return }
             let inserted = CachedPhoto(from: dto)
             context.insert(inserted)
             return
@@ -128,7 +127,7 @@ final class SyncCoordinator: ObservableObject {
             }
         }
 
-        if dto.isDeleted {
+        if dto.isSoftDeleted {
             LocalImageCache.deleteImage(filename: local.localImageFilename)
             context.delete(local)
         } else {
@@ -149,10 +148,6 @@ final class SyncCoordinator: ObservableObject {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let isoString = formatter.string(from: date)
 
-        // Note: Firestore REST structuredQuery uses `updateTime` as an order/timestamp field.
-        // Filtering on `updateTime` via `:runQuery` requires `updateTime` ordering; if your
-        // Firestore index or REST query rejects `updateTime` in a structuredQuery filter,
-        // fall back to `fetchPhotoMetadata` and filter `dto.serverUpdatedAt >= sinceDate` in Swift.
         let queryBody: [String: Any] = [
             "structuredQuery": [
                 "from": [
@@ -176,6 +171,8 @@ final class SyncCoordinator: ObservableObject {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = 15
+        request.assumesHTTP3Capable = false
         request.setValue("Bearer \(cleanToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: queryBody)
@@ -186,7 +183,6 @@ final class SyncCoordinator: ObservableObject {
             throw NSError(domain: "FirestoreError", code: (response as? HTTPURLResponse)?.statusCode ?? 500, userInfo: [NSLocalizedDescriptionKey: message])
         }
 
-        // `:runQuery` returns an array of objects containing `"document": { ... }`
         guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             return []
         }

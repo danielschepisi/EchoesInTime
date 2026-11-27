@@ -16,7 +16,7 @@ struct PhotoMetadata: Identifiable, Codable {
     var dateTaken: Date
     var dateUploaded: Date = Date()
     var serverUpdatedAt: Date = Date()  // Tracks last cloud modification
-    var isDeleted: Bool = false         // Soft-delete flag for multi-user sync
+    var isSoftDeleted: Bool = false         // Soft-delete flag for multi-user sync
     var people: [String]
     var location: String
     var userId: String
@@ -60,7 +60,7 @@ extension PhotoMetadata {
         let serverUpdateTimeString = document["updateTime"] as? String
         let serverUpdatedAt = Self.parseISO8601Date(serverUpdateTimeString) ?? Date()
 
-        let isDeleted = (fields["isDeleted"] as? [String: Any])?["booleanValue"] as? Bool ?? false
+        let isSoftDeleted = (fields["isSoftDeleted"] as? [String: Any])?["booleanValue"] as? Bool ?? false
         
         // Required Fields
         guard let storagePathDict = fields["storagePath"] as? [String: Any],
@@ -96,7 +96,7 @@ extension PhotoMetadata {
         self.dateTaken = dateTaken
         self.dateUploaded = dateUploaded
         self.serverUpdatedAt = serverUpdatedAt
-        self.isDeleted = isDeleted
+        self.isSoftDeleted = isSoftDeleted
         self.people = peopleList
         self.location = location
         self.userId = userId
@@ -118,7 +118,7 @@ extension PhotoMetadata {
                     "values": people.map { ["stringValue": $0] }
                 ]
             ],
-            "isDeleted": ["booleanValue": isDeleted]
+            "isSoftDeleted": ["booleanValue": isSoftDeleted]
         ]
         
         if let downloadURL = downloadURL {

@@ -16,7 +16,7 @@ final class CachedPhoto {
     var dateTaken: Date
     var dateUploaded: Date
     var serverUpdatedAt: Date
-    var isDeleted: Bool
+    var isSoftDeleted: Bool
     var people: [String]
     var location: String
     var userId: String
@@ -33,7 +33,7 @@ final class CachedPhoto {
         dateTaken: Date,
         dateUploaded: Date = Date(),
         serverUpdatedAt: Date = Date(),
-        isDeleted: Bool = false,
+        isSoftDeleted: Bool = false,
         people: [String] = [],
         location: String = "",
         userId: String,
@@ -47,7 +47,7 @@ final class CachedPhoto {
         self.dateTaken = dateTaken
         self.dateUploaded = dateUploaded
         self.serverUpdatedAt = serverUpdatedAt
-        self.isDeleted = isDeleted
+        self.isSoftDeleted = isSoftDeleted
         self.people = people
         self.location = location
         self.userId = userId
@@ -67,7 +67,7 @@ extension CachedPhoto {
             dateTaken: dto.dateTaken,
             dateUploaded: dto.dateUploaded,
             serverUpdatedAt: dto.serverUpdatedAt,
-            isDeleted: dto.isDeleted,
+            isSoftDeleted: dto.isSoftDeleted,
             people: dto.people,
             location: dto.location,
             userId: dto.userId,
@@ -81,7 +81,7 @@ extension CachedPhoto {
         self.dateTaken = dto.dateTaken
         self.dateUploaded = dto.dateUploaded
         self.serverUpdatedAt = dto.serverUpdatedAt
-        self.isDeleted = dto.isDeleted
+        self.isSoftDeleted = dto.isSoftDeleted
         self.people = dto.people
         self.location = dto.location
         self.userId = dto.userId
@@ -96,7 +96,7 @@ extension CachedPhoto {
             dateTaken: dateTaken,
             dateUploaded: dateUploaded,
             serverUpdatedAt: serverUpdatedAt,
-            isDeleted: isDeleted,
+            isSoftDeleted: isSoftDeleted,
             people: people,
             location: location,
             userId: userId
